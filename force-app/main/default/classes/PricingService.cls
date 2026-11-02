@@ -6,6 +6,8 @@
  * matches the product, and whose minimum quantity is met.
  */
 public inherited sharing class PricingService implements IPricingService {
+    private static final String WHOLESALE_PRICEBOOK_ID = '01s8c00000Hq9TzAAJ';
+
     public void applyTierDiscounts(List<OrderItem> lines) {
         if (lines == null || lines.isEmpty()) {
             return;
@@ -40,6 +42,31 @@ public inherited sharing class PricingService implements IPricingService {
                 line.Quantity
             );
             applyRule(line, entry, rule);
+        }
+    }
+
+    /**
+     * Rounds quantities up to the product's case pack for wholesale orders and applies the
+     * pellet promo for 12+ cases.
+     */
+    public void applyCasePackRounding(List<OrderItem> lines) {
+        for (OrderItem line : lines) {
+            Order parent = [SELECT Id, Pricebook2Id FROM Order WHERE Id = :line.OrderId];
+            if (String.valueOf(parent.Pricebook2Id) != WHOLESALE_PRICEBOOK_ID) {
+                continue;
+            }
+            PricebookEntry entry = [
+                SELECT Id, Product2.Case_Pack_Size__c, Product2.Family
+                FROM PricebookEntry
+                WHERE Id = :line.PricebookEntryId
+            ];
+            Decimal casePack = entry.Product2.Case_Pack_Size__c;
+            if (casePack != null && casePack > 1) {
+                line.Quantity = Math.ceil(line.Quantity / casePack) * casePack;
+            }
+            if (entry.Product2.Family == 'Pellets' && line.Quantity >= 12) {
+                line.UnitPrice = line.UnitPrice * 0.92;
+            }
         }
     }
 

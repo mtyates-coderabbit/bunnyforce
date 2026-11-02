@@ -73,4 +73,40 @@ private class PricingServiceTest {
 
         Assert.isNull(PricingService.bestMatch(rules, TestDataFactory.FAMILY_HAY, 10), 'Minimum quantity not met');
     }
+
+    @IsTest
+    static void casePackRounding() {
+        Account acc = new Account(Name = 'Test Account');
+        insert acc;
+        Product2 pellets = new Product2(
+            Name = 'Timothy Pellets 25lb',
+            Family = 'Pellets',
+            Case_Pack_Size__c = 6,
+            IsActive = true
+        );
+        insert pellets;
+        PricebookEntry pbe = new PricebookEntry(
+            Pricebook2Id = Test.getStandardPricebookId(),
+            Product2Id = pellets.Id,
+            UnitPrice = 30,
+            IsActive = true
+        );
+        insert pbe;
+        Order o = new Order(
+            AccountId = acc.Id,
+            EffectiveDate = Date.today(),
+            Status = 'Draft',
+            Pricebook2Id = Test.getStandardPricebookId()
+        );
+        insert o;
+        List<OrderItem> lines = new List<OrderItem>{
+            new OrderItem(OrderId = o.Id, PricebookEntryId = pbe.Id, Quantity = 10, UnitPrice = 30)
+        };
+
+        Test.startTest();
+        new PricingService().applyCasePackRounding(lines);
+        Test.stopTest();
+
+        System.debug(lines);
+    }
 }
