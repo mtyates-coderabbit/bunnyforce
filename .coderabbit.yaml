@@ -1,0 +1,446 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration for Bunnyforce Supply Co. (Salesforce / Apex).
+# Review behaviour is tuned to the team checklist in docs/apex-standards.md. Rule IDs
+# (BF-*) referenced below are defined there.
+
+language: en-US
+tone_instructions: >-
+  Act as a senior Salesforce technical architect. Be direct and specific. Cite the BF-* rule from
+  docs/apex-standards.md, the governor limit or the order-of-execution step behind each finding.
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  high_level_summary_instructions: |
+    Summarize the change for a Salesforce release manager. Use these headings:
+    - **What changed**: business behaviour, in plain language.
+    - **Metadata impact**: objects, fields, permission sets, custom metadata, triggers, LWC added or changed. Call out anything that needs a manual post-deploy step (named credentials, scheduled jobs, permission set assignments, data backfills).
+    - **Governor limit & data volume risk**: SOQL/DML counts per transaction, async usage, behaviour at 200 records per trigger chunk.
+    - **Security**: sharing, CRUD/FLS enforcement, new external endpoints, permission changes.
+    - **Test coverage**: which new or changed classes have tests, and whether bulk, negative and permission scenarios are covered.
+  review_status: true
+  review_details: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: true
+  suggested_reviewers: true
+  poem: false
+  in_progress_fortune: false
+  labeling_instructions:
+    - label: apex
+      instructions: Apply when any .cls or .trigger file under force-app is added or modified.
+    - label: lwc
+      instructions: Apply when any Lightning web component under force-app/**/lwc is added or modified.
+    - label: metadata
+      instructions: Apply when objects, fields, custom metadata types or records, or other non-code metadata change.
+    - label: security
+      instructions: >-
+        Apply when the PR changes sharing declarations, CRUD/FLS enforcement, permission sets, named
+        credentials, @AuraEnabled or @RestResource entry points, or introduces a security finding.
+    - label: governor-limits
+      instructions: >-
+        Apply when the PR introduces or fixes SOQL/DML/callouts in loops, changes async processing (Batch,
+        Queueable, Schedulable) or otherwise changes per-transaction limit consumption.
+    - label: integration
+      instructions: Apply when outbound callouts, inbound REST resources or platform events change.
+    - label: tests-only
+      instructions: Apply when the PR only changes test classes or TestDataFactory.
+    - label: needs-declarative-review
+      instructions: >-
+        Apply when new Apex implements something that a validation rule, formula field, roll-up summary,
+        duplicate rule or record-triggered Flow could reasonably handle (BF-APEX-1).
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/.sf/**"
+    - "!**/.sfdx/**"
+    - "!**/staticresources/**"
+    - "!package-lock.json"
+
+  path_instructions:
+    - path: "force-app/**/*.cls"
+      instructions: |
+        Review all Apex against docs/apex-standards.md. Prioritise, in this order:
+
+        1. Governor limits and bulkification (BF-PERF-1..6, BF-BASIC-3). Flag any SOQL, SOSL, DML,
+           Database.* call, EventBus.publish, HTTP callout or System.enqueueJob that executes inside a
+           loop, including indirectly through a helper method called from a loop. Assume every trigger
+           receives 200 records. Prefer Set<Id> collection followed by a single query and a Map<Id, SObject>.
+        2. Security (BF-SEC-1..7). Every top-level class must declare `with sharing`, `inherited sharing`
+           or a justified `without sharing`. User-facing code must enforce CRUD/FLS (USER_MODE, WITH USER_MODE,
+           `as user`, Security.stripInaccessible). Any SYSTEM_MODE usage needs a comment explaining why it is
+           automation. Dynamic SOQL must use binds; flag any string concatenation of variables into a query.
+        3. Hardcoded values (BF-APEX-2, BF-ARCH-7). Flag 15/18-character Salesforce IDs, record type or
+           profile names used as IDs, URLs, endpoints, thresholds, warehouse codes, and magic picklist strings.
+           Configuration belongs in Bunnyforce_Setting__mdt via BunnyforceSettings, and statuses in OrderConstants.
+        4. Architecture (BF-ARCH-1..8, BF-OO-1..5). SOQL belongs in *Selector classes. Business rules belong
+           in services or pure policy classes, not in trigger handlers or controllers. External collaborators
+           are resolved through Application.newInstance(). Point out order-of-execution or recursion risks.
+        5. Error handling (BF-ARCH-6). No empty catch blocks and no catch-all `catch (Exception e)` without
+           rethrow or logging. Errors go through Logger with source and record id, and Logger.flush() is
+           called at the end of the entry point. Partial-success DML results must be inspected.
+        6. Size and clarity (BF-STD-1..8). Flag methods longer than about 30 lines, more than one level of
+           nested loops, nested ternaries, unclear names and duplicated logic.
+
+        Suggest concrete, compilable Apex fixes. Do not nitpick formatting that Prettier enforces.
+
+    - path: "force-app/**/triggers/**/*.trigger"
+      instructions: |
+        Enforce BF-ARCH-1 strictly:
+        - Exactly one trigger per SObject. If this PR adds a trigger for an object that already has one in
+          force-app/main/default/triggers, flag it as blocking and ask for the logic to move into the
+          existing handler.
+        - The trigger body must be a single statement, `new <Object>TriggerHandler().run();`, with no logic,
+          queries, DML, loops or conditionals.
+        - The trigger must declare all before and after events (insert, update, delete, undelete), except
+          for platform event triggers, which only support after insert.
+        - The handler must extend TriggerHandler and pass the Trigger_Setting__mdt DeveloperName to super().
+
+    - path: "force-app/**/*Test.cls"
+      instructions: |
+        Review tests against BF-TEST-1..9:
+        - Every @IsTest method must contain at least one Assert.* call with a message that verifies
+          business behaviour. Flag tests that only call code for coverage, assert constants, or wrap code
+          in try/catch without asserting.
+        - @IsTest(SeeAllData=true) is never allowed. Tests must not rely on existing org data or hardcoded IDs.
+        - Records must come from TestDataFactory. Suggest a new factory method instead of inline record building.
+        - Trigger and service changes need a bulk test with 200 records.
+        - User-facing code (controllers, REST) needs System.runAs tests with and without the relevant
+          permission set.
+        - Callouts must use HttpCalloutMock, and services should inject FakeFulfillmentClient via
+          Application.setMock. Async code must run inside Test.startTest()/Test.stopTest().
+        - Each method tests one behaviour, named <scenario><expectedOutcome>, laid out arrange/act/assert.
+        - When a production class in this PR has no matching test changes, say so explicitly.
+
+    - path: "force-app/**/*Selector.cls"
+      instructions: |
+        Selectors are the only place SOQL is allowed (BF-ARCH-3).
+        - Queries must use bind variables via Database.queryWithBinds or static SOQL binds. Never concatenate
+          parameters into the query string (BF-SEC-3).
+        - The access mode must come from the constructor (USER_MODE by default). Flag hardcoded SYSTEM_MODE.
+        - Methods must short-circuit on null or empty input sets and return empty collections, never null.
+        - Check selectivity for large data volume (BF-NFR-2): filters on indexed fields (Id, Name, external
+          IDs, lookups, CreatedDate, SystemModstamp) and no leading-wildcard LIKE. Flag queries without a WHERE
+          clause on objects that can grow large, unless they feed a Batch QueryLocator.
+        - Select only the fields callers need (BF-PERF-4).
+
+    - path: "force-app/**/*TriggerHandler.cls"
+      instructions: |
+        Handlers stay thin (BF-ARCH-2):
+        - Override only the needed context methods, and delegate rules to services or policy classes.
+        - Use isChanged() to act only on relevant field changes (BF-ARCH-5). Flag static Boolean "run once"
+          recursion guards.
+        - Before-trigger methods should modify Trigger.new records directly without DML. After-trigger methods
+          handle related records. Flag DML on the triggering records in after context.
+        - Callouts must never be made from a handler. Async work is enqueued with a Limits check (BF-INT-2, BF-PERF-3).
+
+    - path: "force-app/**/*Service.cls"
+      instructions: |
+        Services hold business logic:
+        - Must be bulk-safe for collections and must not assume a single record.
+        - Depend on interfaces for external collaborators, resolved through Application.newInstance()
+          (BF-OO-5), with a @TestVisible constructor for injection.
+        - Any SYSTEM_MODE query or DML must carry a comment explaining why the automation must bypass user
+          permissions (BF-SEC-2).
+        - Do all callouts before any DML in the same transaction (BF-INT-2).
+
+    - path: "force-app/**/*{Batch,Queueable,Schedulable}.cls"
+      instructions: |
+        Async Apex (BF-ARCH-8, BF-NFR-2):
+        - Batch: start() must return a QueryLocator from a selector, execute() must be bulk-safe for its scope
+          size and must log per-record failures from partial DML, and finish() should report a summary through Logger.
+        - Queueable: classes that make callouts must implement Database.AllowsCallouts and chunk work to stay
+          within Limits.getLimitCallouts(). Chaining must be guarded.
+        - Check System.enqueueJob and Database.executeBatch calls against Limits when they can run from
+          trigger context.
+        - Flag any use of @future in new code.
+
+    - path: "force-app/**/*Controller.cls"
+      instructions: |
+        LWC/Aura controllers are user-facing entry points (BF-SEC-1, BF-SEC-2, BF-SEC-5):
+        - The class must be `with sharing`. Queries and DML must run in USER_MODE.
+        - @AuraEnabled methods validate their inputs and throw AuraHandledException with setMessage() and
+          a user-friendly message. Never expose exception messages or stack traces to the client.
+        - Use cacheable=true only for read-only methods.
+        - Business logic belongs in services, not controllers.
+
+    - path: "force-app/**/{*Webhook,*Client,*Api}.cls"
+      instructions: |
+        Integration code (BF-INT-1..4, BF-SEC-4):
+        - Outbound: endpoints must use `callout:<NamedCredential>`. Flag literal https:// URLs, API keys,
+          tokens, Authorization headers built from strings, and secrets in custom labels or settings. Each
+          request must set a timeout and handle non-2xx responses. Prefer idempotency keys.
+        - Inbound @RestResource: the class is `global with sharing` (global is required here). It validates
+          the payload, returns correct status codes (400/404/409/500), never echoes internal error details,
+          and runs DML in USER_MODE as the integration user.
+        - A failure on one record must not fail the batch; log it and set a status the business can act on.
+
+    - path: "force-app/**/lwc/**"
+      instructions: |
+        Lightning web components:
+        - Use @wire for cacheable reads and imperative Apex for mutations. Handle both data and error states.
+        - Don't hardcode record IDs, URLs or user-visible strings that should be custom labels.
+        - Templates must use lwc:if/lwc:elseif (not the deprecated if:true) and be accessible: labels on
+          inputs and alternative text on icons.
+        - The js-meta.xml must target only the required pages and objects.
+
+    - path: "force-app/**/objects/**"
+      instructions: |
+        Metadata changes (BF-SEC-6, BF-APEX-1):
+        - New custom fields need a description, and the right permission set in
+          force-app/main/default/permissionsets needs matching fieldPermissions in the same PR. Flag fields
+          added without FLS.
+        - Prefer declarative solutions: if a formula, roll-up summary or validation rule replaces Apex in
+          this PR, call it out.
+        - Flag changing a field's type, or deleting a field or picklist value, because these are destructive
+          changes that need a data migration plan in the PR description.
+        - External ID and unique fields should be justified because they create indexes.
+
+    - path: "force-app/**/permissionsets/**"
+      instructions: |
+        Least privilege (BF-SEC-6):
+        - Flag modifyAllRecords, viewAllRecords, "Modify All Data", "View All Data" and "Author Apex".
+        - Edit access on system-maintained fields (Open_Order_Value__c, Trailing_12_Month_Revenue__c,
+          Credit_Hold__c, External_Fulfillment_Id__c) should be questioned.
+        - Never grant access through profiles. Permission sets only.
+
+    - path: "force-app/**/customMetadata/**"
+      instructions: |
+        Custom metadata records are environment configuration deployed by Gearset:
+        - Flag values that look like secrets, credentials or environment-specific URLs.
+        - Setting a Trigger_Setting__mdt record's Is_Active__c to false disables trigger logic in every
+          environment the change is deployed to. Treat it as high risk and ask for justification.
+
+    - path: "config/pmd/**"
+      instructions: >-
+        Changes to the PMD ruleset weaken or strengthen automated enforcement (BF-TOOL-1). Flag removed rules
+        or lowered thresholds and ask for justification.
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    base_branches:
+      - "main"
+      - "develop"
+      - "uat"
+      - "release/.*"
+      - "hotfix/.*"
+    ignore_title_keywords:
+      - "WIP"
+      - "[skip review]"
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+    custom:
+      - name: "Bulkify"
+        instructions: >-
+          Rewrite the selected Apex so it is bulk-safe for 200 records: move SOQL/DML out of loops, collect
+          IDs into Sets, query once through the appropriate *Selector, and use Map<Id, SObject> lookups.
+          Keep behaviour identical and update or add tests with a 200-record scenario using TestDataFactory.
+
+  pre_merge_checks:
+    docstrings:
+      mode: warning
+      threshold: 70
+    title:
+      mode: warning
+      requirements: >-
+        Use Conventional Commits: `<type>(<area>): <imperative summary>`, where type is one of feat, fix,
+        refactor, perf, test, docs or chore, and area is a domain such as pricing, credit, fulfillment,
+        tiering, logging, framework or metadata. Keep it under 72 characters.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+    custom_checks:
+      # ---------- Blocking (error) ----------
+      - name: "No SOQL/DML/callouts in loops"
+        mode: error
+        instructions: |
+          BF-PERF-1 / BF-BASIC-3. Fail if any added or modified Apex executes SOQL, SOSL, DML statements,
+          Database.* DML or query methods, EventBus.publish, Http.send or System.enqueueJob inside a for,
+          while or do-while loop, whether directly or through a method invoked from the loop body. Pass if
+          these operations are collected and executed once outside the loop. Name the file, line and the
+          operation found.
+      - name: "No hardcoded Salesforce IDs or endpoints"
+        mode: error
+        instructions: |
+          BF-APEX-2 / BF-SEC-4. Fail if added Apex, LWC or metadata contains a literal 15- or 18-character
+          Salesforce record ID (key prefixes such as 001, 003, 005, 006, 00e, 012, 01s, 801), a literal
+          http:// or https:// endpoint in Apex, or an API key, token, password or Authorization header value.
+          Named Credentials (callout:Name), custom metadata lookups and Test.getStandardPricebookId() pass.
+      - name: "Explicit sharing on every Apex class"
+        mode: error
+        instructions: |
+          BF-SEC-1. Fail if any added or modified top-level Apex class (excluding interfaces, test classes
+          and classes annotated @IsTest) omits a sharing keyword. Fail if `without sharing` is introduced
+          without an adjacent comment that justifies it. Controllers and @RestResource classes must be
+          `with sharing`.
+      - name: "CRUD/FLS enforced and injection-safe SOQL"
+        mode: error
+        instructions: |
+          BF-SEC-2 / BF-SEC-3. Fail if:
+          (a) a user-facing entry point (an @AuraEnabled method, an @RestResource method, or a Visualforce or
+              LWC controller) queries or performs DML without USER_MODE, WITH USER_MODE, `as user` or
+              Security.stripInaccessible;
+          (b) dynamic SOQL concatenates a variable, parameter or user input into the query string instead
+              of using bind variables;
+          (c) AccessLevel.SYSTEM_MODE or `as system` is introduced without a comment explaining why it is
+              automation.
+      - name: "One trigger per object, no trigger logic"
+        mode: error
+        instructions: |
+          BF-ARCH-1. Fail if the PR adds a second trigger for an SObject that already has a trigger in
+          force-app/main/default/triggers, or if any trigger body contains anything other than the single
+          statement `new <Name>TriggerHandler().run();`.
+      - name: "Tests have meaningful assertions"
+        mode: error
+        instructions: |
+          BF-TEST-2 / BF-TEST-3. Fail if any added or modified @IsTest method lacks an Assert.* (or
+          System.assert*) call that verifies behaviour, asserts only literals (e.g. Assert.isTrue(true)),
+          or if any test class uses SeeAllData=true.
+      - name: "No callouts from trigger context"
+        mode: error
+        instructions: |
+          BF-INT-2. Fail if Http.send, or a method that performs a callout, is reachable synchronously from
+          a trigger handler. Fail if a class that performs callouts is enqueued without implementing
+          Database.AllowsCallouts. Pass when callouts happen in a Queueable that implements
+          Database.AllowsCallouts.
+
+      # ---------- Advisory (warning) ----------
+      - name: "Changed Apex has matching tests"
+        mode: warning
+        instructions: |
+          BF-BASIC-4 / BF-TEST-4..8. Warn if a production Apex class is added or meaningfully changed
+          without a corresponding *Test.cls change that exercises the new behaviour. Warn if new tests
+          build records inline instead of through TestDataFactory, if trigger or service changes lack a
+          200-record bulk test, or if user-facing code lacks a System.runAs permission test.
+      - name: "Errors handled through Logger"
+        mode: warning
+        instructions: |
+          BF-ARCH-6 / BF-PERF-6. Warn on empty catch blocks, catch blocks that only call System.debug,
+          broad `catch (Exception e)` that swallows errors, partial-success DML whose SaveResults are not
+          inspected, or entry points that log without calling Logger.flush().
+      - name: "Methods small and single-purpose"
+        mode: warning
+        instructions: |
+          BF-STD-3 / BF-OO-3. Warn when an added or modified method exceeds about 30 lines, has more than
+          one level of nested loops, mixes querying, business rules and DML in one method, or when a class
+          takes on a second responsibility.
+      - name: "Naming and constants conventions"
+        mode: warning
+        instructions: |
+          BF-STD-1 / BF-STD-2 / BF-STD-7. Warn when class names lack the required suffix (TriggerHandler,
+          Service, Selector, Controller, Batch, Queueable, Test), when interfaces lack the I prefix, when
+          constants are not UPPER_SNAKE_CASE static final, or when picklist or status string literals are
+          repeated instead of using OrderConstants or another constants class.
+      - name: "Configuration over hardcoding"
+        mode: warning
+        instructions: |
+          BF-ARCH-7. Warn when business thresholds, limits, percentages, batch sizes, warehouse codes or
+          paths are hardcoded in Apex instead of read through BunnyforceSettings (Bunnyforce_Setting__mdt).
+      - name: "Dependency injection for collaborators"
+        mode: warning
+        instructions: |
+          BF-OO-5. Warn when a service directly instantiates an external collaborator (HTTP client, pricing
+          engine, third-party wrapper) instead of resolving an interface through Application.newInstance(),
+          or when a new interface implementation is not registered in Application.BINDINGS.
+      - name: "Order of execution and recursion safe"
+        mode: warning
+        instructions: |
+          BF-ARCH-4 / BF-ARCH-5. Warn when before-trigger logic performs DML on the triggering records,
+          when after-trigger logic updates the same records without bypass or change detection, when static
+          "run once" booleans are used as recursion guards, or when the change depends on Flow, validation
+          rule or workflow ordering without saying so.
+      - name: "Scales to large data volumes"
+        mode: warning
+        instructions: |
+          BF-NFR-1 / BF-NFR-2. Warn on non-selective queries against Account, Order, OrderItem or
+          Log_Entry__c (no WHERE clause, or only non-indexed filters) outside a Batch QueryLocator; on
+          synchronous processing of unbounded record sets; on loops nested over two query results; or on
+          patterns likely to cause record-lock contention on a shared parent.
+      - name: "Declarative alternative considered"
+        mode: warning
+        instructions: |
+          BF-APEX-1. Warn when new Apex implements logic that a validation rule, formula field, roll-up
+          summary, duplicate rule or record-triggered Flow could reasonably handle, and the PR description
+          does not explain why code was chosen.
+      - name: "Deployment-complete metadata"
+        mode: warning
+        instructions: |
+          BF-SEC-6 / BF-TOOL-2. Warn when the PR adds custom fields or objects without permission set
+          fieldPermissions/objectPermissions, adds Apex classes or triggers without -meta.xml files, adds
+          an @AuraEnabled or @RestResource class without classAccesses in a permission set, or needs manual
+          post-deploy steps (named credentials, scheduled jobs, data backfill) that the PR description
+          does not list.
+
+  tools:
+    pmd:
+      enabled: true
+      config_file: "config/pmd/apex-ruleset.xml"
+    eslint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    github-checks:
+      enabled: true
+
+chat:
+  auto_reply: true
+  art: false
+
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "docs/apex-standards.md"
+      - "CONTRIBUTING.md"
+  learnings:
+    scope: auto
+  pull_requests:
+    scope: auto
+
+code_generation:
+  docstrings:
+    path_instructions:
+      - path: "force-app/**/*.cls"
+        instructions: |
+          Use ApexDoc block comments (/** ... */) above classes and public methods. Explain why the code
+          exists and any governor-limit, sharing or order-of-execution considerations. Use @param, @return
+          and @throws tags only when they add information. Do not restate the method name.
+  unit_tests:
+    path_instructions:
+      - path: "force-app/**/*.cls"
+        instructions: |
+          Generate Apex tests that follow docs/apex-standards.md section 7:
+          - Annotate the class `@IsTest private class <ClassName>Test`. Never use SeeAllData=true.
+          - Create data only through TestDataFactory, and add factory methods if needed.
+          - Name methods <scenario><expectedOutcome>, one behaviour per method, laid out arrange/act/assert.
+          - Use the Assert class (Assert.areEqual, Assert.isTrue and so on) with a descriptive message.
+          - Include a 200-record bulk scenario for trigger and service logic.
+          - Use System.runAs with TestDataFactory.createUserWithPermissionSet for user-facing code.
+          - Fake callouts with HttpCalloutMock, and collaborators with Application.setMock (e.g. FakeFulfillmentClient).
+          - Wrap async code in Test.startTest()/Test.stopTest().

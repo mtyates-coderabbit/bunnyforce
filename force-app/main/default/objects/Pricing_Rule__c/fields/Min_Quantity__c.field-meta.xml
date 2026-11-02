@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Min_Quantity__c</fullName>
+    <description>Minimum line quantity required for the rule to apply.</description>
+    <externalId>false</externalId>
+    <label>Minimum Quantity</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Number</type>
+    <precision>10</precision>
+    <scale>0</scale>
+</CustomField>

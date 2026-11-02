@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Transaction_Id__c</fullName>
+    <description>Salesforce request id used to correlate entries from one transaction.</description>
+    <externalId>false</externalId>
+    <label>Transaction Id</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+    <length>64</length>
+    <unique>false</unique>
+</CustomField>

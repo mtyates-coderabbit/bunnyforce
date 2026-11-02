@@ -1,0 +1,24 @@
+{
+  "name": "bunnyforce",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bunnyforce Supply Co. - Salesforce org source (Apex, LWC, metadata)",
+  "scripts": {
+    "lint": "eslint \"force-app/**/lwc/**/*.js\"",
+    "prettier": "prettier --write \"force-app/**/*.{cls,trigger,js,html,xml}\"",
+    "prettier:verify": "prettier --check \"force-app/**/*.{cls,trigger,js,html}\"",
+    "scan": "pmd check -d force-app -R config/pmd/apex-ruleset.xml -f text --no-progress",
+    "test:apex": "sf apex run test --test-level RunLocalTests --code-coverage --result-format human --wait 30"
+  },
+  "devDependencies": {
+    "@lwc/eslint-plugin-lwc": "^2.0.0",
+    "@prettier/plugin-xml": "^3.4.1",
+    "@salesforce/eslint-config-lwc": "^3.6.0",
+    "@salesforce/eslint-plugin-lightning": "^1.0.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jest": "^28.8.3",
+    "prettier": "^3.3.3",
+    "prettier-plugin-apex": "^2.2.2"
+  }
+}

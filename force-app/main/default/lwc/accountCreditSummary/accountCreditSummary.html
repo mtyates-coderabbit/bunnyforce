@@ -1,0 +1,41 @@
+<template>
+    <lightning-card title="Wholesale Credit" icon-name="standard:account">
+        <div class="slds-p-horizontal_medium">
+            <template lwc:if={summary}>
+                <span class={statusClass}>{statusLabel}</span>
+                <dl class="slds-list_horizontal slds-wrap slds-m-top_small">
+                    <dt class="slds-item_label slds-text-color_weak">Tier</dt>
+                    <dd class="slds-item_detail">{summary.tier}</dd>
+                    <template lwc:if={hasLimit}>
+                        <dt class="slds-item_label slds-text-color_weak">Credit Limit</dt>
+                        <dd class="slds-item_detail">
+                            <lightning-formatted-number
+                                value={summary.creditLimit}
+                                format-style="currency"
+                            ></lightning-formatted-number>
+                        </dd>
+                        <dt class="slds-item_label slds-text-color_weak">Available</dt>
+                        <dd class="slds-item_detail">
+                            <lightning-formatted-number
+                                value={summary.availableCredit}
+                                format-style="currency"
+                            ></lightning-formatted-number>
+                        </dd>
+                        <dt class="slds-item_label slds-text-color_weak">Utilization</dt>
+                        <dd class="slds-item_detail">{summary.utilizationPercent}%</dd>
+                    </template>
+                    <dt class="slds-item_label slds-text-color_weak">Open Orders</dt>
+                    <dd class="slds-item_detail">
+                        <lightning-formatted-number
+                            value={summary.openOrderValue}
+                            format-style="currency"
+                        ></lightning-formatted-number>
+                    </dd>
+                </dl>
+            </template>
+            <template lwc:elseif={error}>
+                <p class="slds-text-color_error">{error}</p>
+            </template>
+        </div>
+    </lightning-card>
+</template>

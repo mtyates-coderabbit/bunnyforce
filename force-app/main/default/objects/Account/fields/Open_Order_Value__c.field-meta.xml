@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Open_Order_Value__c</fullName>
+    <description>Sum of activated orders not yet delivered. Maintained by CreditCheckService - do not edit manually.</description>
+    <externalId>false</externalId>
+    <label>Open Order Value</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Currency</type>
+    <precision>16</precision>
+    <scale>2</scale>
+</CustomField>

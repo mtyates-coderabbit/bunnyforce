@@ -1,0 +1,52 @@
+name: static-analysis
+
+on:
+  pull_request:
+    branches: [main, develop, uat, "release/**"]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-analysis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format-and-lint:
+    name: Prettier & ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run prettier:verify
+      - run: npm run lint
+
+  pmd:
+    name: PMD (Apex)
+    runs-on: ubuntu-latest
+    env:
+      PMD_VERSION: 7.29.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install PMD
+        run: |
+          curl -sSL -o pmd.zip "https://github.com/pmd/pmd/releases/download/pmd_releases%2F${PMD_VERSION}/pmd-dist-${PMD_VERSION}-bin.zip"
+          unzip -q pmd.zip
+      - name: Run PMD (fail on priority 1-2)
+        run: |
+          "pmd-bin-${PMD_VERSION}/bin/pmd" check \
+            --dir force-app \
+            --rulesets config/pmd/apex-ruleset.xml \
+            --format text \
+            --minimum-priority 2 \
+            --no-progress

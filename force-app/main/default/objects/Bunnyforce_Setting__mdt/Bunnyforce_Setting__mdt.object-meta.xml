@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Typed application configuration read through BunnyforceSettings. Use this instead of hardcoding values in Apex.</description>
+    <label>Bunnyforce Setting</label>
+    <pluralLabel>Bunnyforce Settings</pluralLabel>
+    <visibility>Public</visibility>
+</CustomObject>

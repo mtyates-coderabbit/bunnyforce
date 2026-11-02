@@ -1,0 +1,7 @@
+# Default owners for everything in the repo
+*                                   @mtyates
+
+# Security-sensitive metadata needs a platform architect
+/force-app/main/default/permissionsets/   @mtyates
+/config/pmd/                              @mtyates
+/.coderabbit.yaml                         @mtyates
