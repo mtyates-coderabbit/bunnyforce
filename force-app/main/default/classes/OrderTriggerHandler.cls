@@ -33,6 +33,16 @@ public inherited sharing class OrderTriggerHandler extends TriggerHandler {
         }
         creditCheck.recalculateOpenOrderValue(accountsToRecalculate);
         OrderFulfillmentQueueable.enqueue(readyForFulfillment);
+
+        List<Order> failed = new List<Order>();
+        for (Order o : (List<Order>) newRecords) {
+            if (o.Fulfillment_Status__c == 'Failed') {
+                failed.add(o);
+            }
+        }
+        if (!failed.isEmpty()) {
+            FulfillmentRetryService.retryFailedOrders(failed);
+        }
         Logger.flush();
     }
 
