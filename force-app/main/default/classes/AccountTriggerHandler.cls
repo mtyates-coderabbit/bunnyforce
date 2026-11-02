@@ -4,10 +4,12 @@
  */
 public inherited sharing class AccountTriggerHandler extends TriggerHandler {
     private final CreditPolicy policy;
+    private final CreditCheckService creditCheck;
 
     public AccountTriggerHandler() {
         super('Account');
         this.policy = new CreditPolicy();
+        this.creditCheck = new CreditCheckService();
     }
 
     protected override void beforeInsert() {
@@ -16,12 +18,29 @@ public inherited sharing class AccountTriggerHandler extends TriggerHandler {
 
     protected override void beforeUpdate() {
         List<Account> creditChanged = new List<Account>();
+        List<Account> limitIncreased = new List<Account>();
         for (Account customer : (List<Account>) newRecords) {
             if (isChanged(customer, Account.Open_Order_Value__c) || isChanged(customer, Account.Credit_Limit__c)) {
                 creditChanged.add(customer);
             }
+            if (isLimitIncreased(customer)) {
+                limitIncreased.add(customer);
+            }
         }
+        // Release first so the hold flag below reflects the newly approved order value.
+        creditCheck.releaseHeldOrders(limitIncreased);
         applyCreditHold(creditChanged);
+    }
+
+    /**
+     * A limit increase, or removing the limit entirely, may let held orders through.
+     */
+    private Boolean isLimitIncreased(Account customer) {
+        if (!isChanged(customer, Account.Credit_Limit__c)) {
+            return false;
+        }
+        Decimal previousLimit = ((Account) oldMap.get(customer.Id)).Credit_Limit__c;
+        return customer.Credit_Limit__c == null || previousLimit == null || customer.Credit_Limit__c > previousLimit;
     }
 
     private void applyCreditHold(List<Account> customers) {

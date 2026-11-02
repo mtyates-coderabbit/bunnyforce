@@ -147,6 +147,18 @@ public class TestDataFactory {
     }
 
     /**
+     * Creates activated orders that were placed on credit hold: each account gets the given
+     * number of orders worth quantity x unit price, against a credit limit too low to approve them.
+     */
+    public static List<Order> createHeldOrders(List<Account> accounts, Integer perAccount, Decimal orderValue) {
+        List<Order> orders = createDraftOrders(accounts, perAccount, true);
+        PricebookEntry entry = createPricedProducts(1, FAMILY_HAY, orderValue, false)[0];
+        createOrderItems(orders, entry, 1, true);
+        activate(orders);
+        return orders;
+    }
+
+    /**
      * Creates a Standard User with the given permission set. Runs the setup DML as the current
      * user to avoid MIXED_DML_OPERATION with the test's non-setup records.
      */
