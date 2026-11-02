@@ -10,6 +10,7 @@ public inherited sharing class OrderItemTriggerHandler extends TriggerHandler {
     }
 
     protected override void beforeInsert() {
+        new PricingService().applyCasePackRounding((List<OrderItem>) newRecords);
         pricing.applyTierDiscounts((List<OrderItem>) newRecords);
     }
 }
