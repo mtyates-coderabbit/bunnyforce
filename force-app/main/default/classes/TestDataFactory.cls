@@ -80,9 +80,9 @@ public class TestDataFactory {
                         Status = OrderConstants.STATUS_DRAFT,
                         ShippingStreet = '1 Warren Way',
                         ShippingCity = 'Reno',
-                        ShippingState = 'NV',
+                        ShippingState = 'Nevada',
                         ShippingPostalCode = '89501',
-                        ShippingCountry = 'US'
+                        ShippingCountry = 'United States'
                     )
                 );
             }

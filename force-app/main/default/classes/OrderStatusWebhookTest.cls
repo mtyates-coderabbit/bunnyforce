@@ -45,9 +45,12 @@ private class OrderStatusWebhookTest {
 
     @IsTest
     static void unknownFulfillmentIdReturnsNotFound() {
+        User integration = TestDataFactory.createUserWithPermissionSet('Bunnyforce_Fulfillment_Integration');
         mockRequest('{"fulfillmentId":"FUL-NOPE","status":"SHIPPED"}');
 
-        OrderStatusWebhook.receive();
+        System.runAs(integration) {
+            OrderStatusWebhook.receive();
+        }
 
         Assert.areEqual(404, RestContext.response.statusCode, 'Unknown fulfillment id should return 404');
     }
