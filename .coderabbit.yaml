@@ -10,7 +10,7 @@ tone_instructions: >-
   docs/apex-standards.md, the governor limit or the order-of-execution step behind each finding.
 
 reviews:
-  profile: assertive
+  profile: chill
   request_changes_workflow: true
   high_level_summary: true
   high_level_summary_instructions: |
