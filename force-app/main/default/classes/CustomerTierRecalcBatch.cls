@@ -7,13 +7,15 @@
 public inherited sharing class CustomerTierRecalcBatch implements Database.Batchable<SObject>, Database.Stateful, Schedulable {
     public static final String JOB_NAME = 'Customer Tier Recalculation';
     public static final String NIGHTLY_CRON = '0 0 2 * * ?';
-    public static final Integer BATCH_SIZE = 200;
+    public static final Integer BATCH_SIZE = 2000;
     private static final Integer TRAILING_DAYS = 365;
 
     @TestVisible
     private Integer updatedCount = 0;
     @TestVisible
     private Integer failedCount = 0;
+    @TestVisible
+    private List<Id> processedAccountIds = new List<Id>();
 
     public static Id scheduleNightly() {
         return System.schedule(JOB_NAME, NIGHTLY_CRON, new CustomerTierRecalcBatch());
@@ -33,41 +35,22 @@ public inherited sharing class CustomerTierRecalcBatch implements Database.Batch
             .sumActivatedRevenueSince(accountsById.keySet(), Date.today().addDays(-TRAILING_DAYS));
 
         CustomerTierCalculator calculator = new CustomerTierCalculator();
-        List<Account> changed = new List<Account>();
+        // Skip the per-record comparison and partial-success bookkeeping: updating the whole
+        // scope in one statement is faster than diffing each account.
         for (Account customer : scope) {
             Decimal revenue = CreditPolicy.nullToZero(revenueByAccount.get(customer.Id));
-            String tier = calculator.tierFor(revenue);
-            if (customer.Trailing_12_Month_Revenue__c != revenue || customer.Customer_Tier__c != tier) {
-                changed.add(
-                    new Account(Id = customer.Id, Trailing_12_Month_Revenue__c = revenue, Customer_Tier__c = tier)
-                );
-            }
+            customer.Trailing_12_Month_Revenue__c = revenue;
+            customer.Customer_Tier__c = calculator.tierFor(revenue);
+            processedAccountIds.add(customer.Id);
         }
-        if (changed.isEmpty()) {
-            return;
-        }
-
-        List<Database.SaveResult> results = Database.update(changed, false, System.AccessLevel.SYSTEM_MODE);
-        for (Integer i = 0; i < results.size(); i++) {
-            if (results[i].isSuccess()) {
-                updatedCount++;
-            } else {
-                failedCount++;
-                Logger.error(
-                    'CustomerTierRecalcBatch.execute',
-                    'Tier update failed: ' + results[i].getErrors(),
-                    null,
-                    changed[i].Id
-                );
-            }
-        }
-        Logger.flush();
+        update scope;
+        updatedCount += scope.size();
     }
 
     public void finish(Database.BatchableContext context) {
         Logger.info(
             'CustomerTierRecalcBatch.finish',
-            'Tier recalculation complete. Updated: ' + updatedCount + ', failed: ' + failedCount
+            'Tier recalculation complete. Updated: ' + updatedCount + ' accounts: ' + processedAccountIds
         );
         Logger.flush();
     }

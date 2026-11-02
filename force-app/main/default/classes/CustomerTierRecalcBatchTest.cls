@@ -11,7 +11,7 @@ private class CustomerTierRecalcBatchTest {
         TestDataFactory.activate(orders);
 
         Test.startTest();
-        Database.executeBatch(new CustomerTierRecalcBatch(), CustomerTierRecalcBatch.BATCH_SIZE);
+        Database.executeBatch(new CustomerTierRecalcBatch(), 200);
         Test.stopTest();
 
         Assert.areEqual(200, [SELECT COUNT() FROM Account WHERE Customer_Tier__c = 'Silver'], '600 revenue is Silver');

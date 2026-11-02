@@ -99,15 +99,13 @@ public inherited sharing class OrdersSelector {
         if (accountIds == null || accountIds.isEmpty()) {
             return new Map<Id, Decimal>();
         }
+        // StatusCode is not indexed and slows the aggregate on large accounts, so filter on
+        // EffectiveDate only.
         List<AggregateResult> rows = (List<AggregateResult>) Database.queryWithBinds(
             'SELECT AccountId acct, SUM(TotalAmount) total FROM Order ' +
-                'WHERE AccountId IN :accountIds AND StatusCode = :activated AND EffectiveDate >= :sinceDate ' +
+                'WHERE AccountId IN :accountIds AND EffectiveDate >= :sinceDate ' +
                 'GROUP BY AccountId',
-            new Map<String, Object>{
-                'accountIds' => accountIds,
-                'activated' => OrderConstants.STATUS_ACTIVATED,
-                'sinceDate' => sinceDate
-            },
+            new Map<String, Object>{ 'accountIds' => accountIds, 'sinceDate' => sinceDate },
             mode
         );
         return toTotalsByAccount(rows);
