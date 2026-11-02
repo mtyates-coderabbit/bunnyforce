@@ -6,6 +6,8 @@
  * resulting Account update lets AccountTriggerHandler derive Credit_Hold__c.
  */
 public inherited sharing class CreditCheckService {
+    private static final String ORDER_HANDLER = 'Order';
+
     private final CreditPolicy policy;
 
     public CreditCheckService() {
@@ -48,6 +50,48 @@ public inherited sharing class CreditCheckService {
                 projectedByAccount.put(customer.Id, projected);
             }
         }
+    }
+
+    /**
+     * Releases held orders that now fit within the account's credit limit, oldest first, and
+     * hands them to fulfillment.
+     *
+     * Called from Account before-update with the in-flight Trigger.new records: the released
+     * value is added to Open_Order_Value__c on those records directly, so no Account DML is
+     * needed. The Order handler is bypassed while statuses are updated because its after-update
+     * recalculation would try to update these same accounts mid-trigger
+     * (SELF_REFERENCE_FROM_TRIGGER).
+     */
+    public void releaseHeldOrders(List<Account> customers) {
+        if (customers == null || customers.isEmpty()) {
+            return;
+        }
+        Map<Id, Account> customersById = new Map<Id, Account>(customers);
+        // Releasing holds is automation triggered by a limit change, not a user query.
+        List<Order> heldOrders = new OrdersSelector(System.AccessLevel.SYSTEM_MODE)
+            .selectHeldByAccountIds(customersById.keySet());
+
+        List<Order> released = new List<Order>();
+        for (Order held : heldOrders) {
+            Account customer = customersById.get(held.AccountId);
+            Decimal projected =
+                CreditPolicy.nullToZero(customer.Open_Order_Value__c) + CreditPolicy.nullToZero(held.TotalAmount);
+            if (!policy.isOverLimit(projected, customer.Credit_Limit__c)) {
+                customer.Open_Order_Value__c = projected;
+                released.add(new Order(Id = held.Id, Credit_Check_Status__c = OrderConstants.CREDIT_APPROVED));
+            }
+        }
+        if (released.isEmpty()) {
+            return;
+        }
+
+        TriggerHandler.bypass(ORDER_HANDLER);
+        try {
+            update as system released;
+        } finally {
+            TriggerHandler.clearBypass(ORDER_HANDLER);
+        }
+        OrderFulfillmentQueueable.enqueue(new Map<Id, Order>(released).keySet());
     }
 
     /**

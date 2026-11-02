@@ -69,6 +69,28 @@ public inherited sharing class OrdersSelector {
     }
 
     /**
+     * Activated orders on credit hold for the given accounts, oldest first so holds are
+     * released in the order the customer placed them.
+     */
+    public List<Order> selectHeldByAccountIds(Set<Id> accountIds) {
+        if (accountIds == null || accountIds.isEmpty()) {
+            return new List<Order>();
+        }
+        return (List<Order>) Database.queryWithBinds(
+            'SELECT ' +
+                BASE_FIELDS +
+                ' FROM Order WHERE AccountId IN :accountIds AND StatusCode = :activated' +
+                ' AND Credit_Check_Status__c = :onHold ORDER BY EffectiveDate ASC, OrderNumber ASC',
+            new Map<String, Object>{
+                'accountIds' => accountIds,
+                'activated' => OrderConstants.STATUS_ACTIVATED,
+                'onHold' => OrderConstants.CREDIT_ON_HOLD
+            },
+            mode
+        );
+    }
+
+    /**
      * Sum of credit-approved, activated orders that have not been delivered, keyed by AccountId.
      * Accounts without open orders are absent from the map.
      */
